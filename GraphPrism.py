@@ -12,7 +12,7 @@ from stqdm import stqdm
 
 # Streamlit App
 st.set_page_config(page_title='Prism Graph Plotter',
-                page_icon='v3.jpg', 
+                page_icon='icon.jpg', 
                 layout= 'centered')
 st.title('Prism Graph Plotter')
 
@@ -71,8 +71,8 @@ if any (rmsd_options) or any (lig_prop_options):
     # Convert Frames to Time (ns)
     frame_division_number = num_frames / simulation_time
 
-# Read files for RMSD values
-def create_rmsd_df(data_dir, frame_divider):
+# Read files for PL RMSD values
+def create_pl_rmsd_df(data_dir, frame_divider):
     # Create an empty DataFrame to hold the concatenated data
     df_concat = pd.DataFrame()
     # Loop over the files in the directory
@@ -178,6 +178,37 @@ def plot_rmsd_original_code(df):
     # Show the plot
     st.pyplot(fig)
 
+# Read files for Lig RMSD values
+def create_lig_rmsd_df(data_dir, frame_divider):
+    # Create an empty DataFrame to hold the concatenated data
+    df_concat = pd.DataFrame()
+    # Loop over the files in the directory
+    for file_name in stqdm(glob.glob(os.path.join(data_dir, '*.dat')), st_container=st.sidebar):
+        sleep(0.5)
+        # Get the base name of the file
+        base_file_name = os.path.basename(file_name)
+        # Read the files into a DataFrame
+        df = pd.read_csv(file_name, sep='\s+')
+
+        # Check if 'Lig_wrt_Protein' column is present in the DataFrame
+        if 'Lig_wrt_Protein' not in df.columns:
+            print(f"Skipping file: {base_file_name} - 'Lig_wrt_Protein' column not found.")
+            st.warning(f"Skipping file: {base_file_name} - 'Lig_wrt_Protein' column not found.")
+            continue
+
+        # Create a new list for the updated column names
+        new_columns = df.columns[1:].tolist() + ['']
+        # Update the DataFrame's column names
+        df.columns = new_columns
+        # Remove '#' from the first column name
+        df.columns = [col.replace('#', '') for col in df.columns]
+        # Remove the last column
+        df = df.iloc[:, :-1]
+        df['Time (ns)'] = df['frame'] // frame_divider
+        df['File'] = base_file_name[:-4]
+        df_concat = pd.concat([df_concat, df])
+
+    return df_concat
 
 # Define function for Ligand RMSD
 def plot_ligand_rmsd(df_concat): 
@@ -212,7 +243,7 @@ def plot_ligand_rmsd(df_concat):
     # Show the plot
     st.pyplot(fig)
 
-## Read the files for RMSF values
+## Read the files for Protein RMSF values
 def create_rmsf_df(data_dir):
     df_concat = pd.DataFrame()
     for file_name in stqdm(glob.glob(os.path.join(data_dir, '*.dat')), st_container=st.sidebar):
@@ -307,7 +338,7 @@ def plot_rGyr(df_concat):
     
     # Adjust the plot limits
     plt.xlim(0, max(df_concat['Time (ns)']) + 2)
-    plt.ylim(4, max(df_concat['rGyr']) + 2)
+    plt.ylim(0, max(df_concat['rGyr']) + 2)
     
     # Add gridlines and remove the top and right spines
     sns.despine()
@@ -373,7 +404,7 @@ def plot_psa(df_concat):
     
     # Adjust the plot limits
     plt.xlim(0, max(df_concat['Time (ns)']) + 2)
-    plt.ylim(30, max(df_concat['PSA']) + 10)
+    plt.ylim(0, max(df_concat['PSA']) + 10)
     
     # Add gridlines and remove the top and right spines
     sns.despine()
@@ -395,15 +426,15 @@ if st.button('Plot Graph'):
     if 'PL-RMSD' in rmsd_options:
         st.write(""" ## Protein-Ligand RMSD 
                 """)
-        df_concat = create_rmsd_df(data_dir, frame_division_number)
+        df_concat = create_pl_rmsd_df(data_dir, frame_division_number)
         st.write(f"Max value in Prot_CA: {max(df_concat['Prot_CA'])}")
         plot_pl_rmsd(df_concat)
         st.success("PL-RMSD graph has been plotted successfully!")
-
+    
     if 'Ligand-RMSD' in rmsd_options:
         st.write("""
                 ## Ligand RMSD""")
-        df_concat = create_rmsd_df(data_dir, frame_division_number)
+        df_concat = create_lig_rmsd_df(data_dir, frame_division_number)
         st.write(f"Max value in Prot_CA: {max(df_concat['Lig_wrt_Protein'])}")        
         plot_ligand_rmsd(df_concat)
         st.success("PL-RMSD graph has been plotted successfully!")
@@ -415,7 +446,7 @@ if st.button('Plot Graph'):
         #st.write(f"Total number of Residues: ")
         plot_protein_rmsf(df_concat)
         st.success("Protein RMSF graph has been plotted successfully!")
-        
+    
     if 'rGyr' in lig_prop_options:
         st.write(""" 
                 ## Ligand Properties
@@ -423,7 +454,7 @@ if st.button('Plot Graph'):
         df_concat = create_prop_df (data_dir, frame_division_number)
         plot_rGyr(df_concat)
         st.success('Ligand rGyr graph has been plotted successfully!' )
-
+    
     if 'SASA' in lig_prop_options:
         st.write(""" 
                 ## Ligand Properties
@@ -431,7 +462,7 @@ if st.button('Plot Graph'):
         df_concat = create_prop_df (data_dir, frame_division_number)
         plot_sasa(df_concat)
         st.success('Ligand SASA graph has been plotted successfully!')
-
+    
     if 'PSA' in lig_prop_options:
         st.write(""" 
                 ## Ligand Properties
@@ -439,4 +470,3 @@ if st.button('Plot Graph'):
         df_concat = create_prop_df(data_dir, frame_division_number)
         plot_psa(df_concat)
         st.success('Ligand PSA graph has been plotted successfully!')
-
