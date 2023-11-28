@@ -1,6 +1,8 @@
 import streamlit as st
 import os
+import io
 import glob
+import base64
 import pandas as pd
 import seaborn as sns
 import plotly.figure_factory as ff
@@ -9,15 +11,37 @@ import matplotlib.pyplot as plt
 
 from time import sleep
 from stqdm import stqdm
+from PIL import Image  
 
-# Streamlit App
-st.set_page_config(page_title='Prism Graph Plotter',
-                page_icon='icon.jpg', 
-                layout= 'centered')
-st.title('Prism Graph Plotter')
+# Load the icon image using Pillow
+icon = Image.open('icon.png')
+
+# Streamlit App Page Config
+st.set_page_config(
+    page_title='Prism Dynamics',
+    page_icon= icon , 
+    layout= 'centered'
+    )
+
+# Convert the image to base64
+image_stream = io.BytesIO()
+icon.save(image_stream, format='PNG')
+encoded_image = base64.b64encode(image_stream.getvalue()).decode()
+
+# Use HTML and CSS to create a horizontal layout
+st.markdown(
+    f"""
+    <div style="display: flex; align-items: center;">
+        <img src="data:image/png;base64,{encoded_image}"
+        style="width:70px; height:70px; margin-right:10px;">
+        <h1>Prism Dynamics</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # Define the inputs for the Streamlit app
-with st.expander('Input RMSD Directory'):
+with st.expander('Input Directory'):
     data_dir = st.text_input("Enter the path directory")
 
 # Path to input directories
@@ -25,10 +49,10 @@ if data_dir:
     # Use the directory path to read the files
     file_names = glob.glob(os.path.join(data_dir, '*.dat'))
 else:
-    st.success("Please enter the path of directory .")
+    st.success("Please enter the path of directory!")
 
 # Project title will be output folder
-project_title = st.text_input("Enter the Project Title")
+project_title = st.text_input("Enter Project Title")
 output_path = os.path.join(os.getcwd(), project_title)
 if not os.path.exists(output_path):
     os.makedirs(output_path)
@@ -66,10 +90,35 @@ if any (rmsd_options) or any (lig_prop_options):
     num_frames = st.sidebar.slider("Number of Frames", min_value=500, max_value=2000, value=1000)
     
     # Add a slider for the time of simulation
-    simulation_time = st.sidebar.slider("Time of Simulation (ns)", min_value=1, max_value=200, value=50)
+    simulation_time = st.sidebar.slider("Time of Simulation (ns)", min_value=0, max_value=200, value=50, step=5)
     
     # Convert Frames to Time (ns)
     frame_division_number = num_frames / simulation_time
+
+# Set Color Palette
+custom_palette = [
+    '#1f77b4',  # Blue
+    '#00FF7F',  # Spring Green
+    '#d62728',  # Red
+    '#8c564b',  # Brown
+    '#FFD700',  # Gold
+    '#00FFFF',  # Cyan
+    '#e377c2',  # Pink
+    '#FF4500',  # Orange Red
+    '#7f7f7f',  # Gray
+    '#bcbd22',  # Olive
+    '#9467bd',  # Purple
+    '#FF1493',  # Deep Pink
+    '#2ca02c',  # Green
+    '#9932CC',  # Dark Orchid
+    '#FF8C00',  # Dark Orange
+    '#4682B4',  # Steel Blue
+    '#8B4513',  # Saddle Brown
+    '#20B2AA',  # Light Sea Green
+    '#800000',  # Maroon
+    '#4169E1',  # Royal Blue
+    '#8B008B',  # Dark Magenta
+]
 
 # Read files for PL RMSD values
 def create_pl_rmsd_df(data_dir, frame_divider):
@@ -91,19 +140,19 @@ def create_pl_rmsd_df(data_dir, frame_divider):
         # Remove the last column
         df = df.iloc[:, :-1]
         df['Time (ns)'] = df['frame'] // frame_divider
-        df['File'] = base_file_name[:-4]
+        df['Structure/s'] = base_file_name[:-4]
         df_concat = pd.concat([df_concat, df])
     return df_concat
 
 # Define function for Protein RMSD 
-def plot_pl_rmsd(df_concat):
+def plot_pl_rmsd(df_concat, color):
     # Set Seaborn style
     sns.set_style('ticks')
-    my_palette = sns.color_palette()
+    #my_palette = sns.color_palette()
 
     # Create the Seaborn plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Time (ns)', y='Prot_CA', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Time (ns)', y='Prot_CA', hue='Structure/s', data=df_concat, linewidth=2.5, palette= color, ax=ax)
 
     # Extract color palette and legend labels from Seaborn
     legend_labels = [text.get_text() for text in ax.get_legend().get_texts()]
@@ -111,7 +160,7 @@ def plot_pl_rmsd(df_concat):
     # Add labels and title
     plt.xlabel('Time (ns)', fontsize=12)
     plt.ylabel('RMSD (Å)', fontsize=12)
-    plt.title('PL-RMSD over Time (ns)', fontsize=16, fontweight='bold', pad=10)
+    plt.title('Protein RMSD over Time', fontsize=16, fontweight='bold', pad=10)
 
     # Adjust the plot limits
     plt.xlim(0, max(df_concat['Time (ns)']))
@@ -142,7 +191,7 @@ def plot_pl_rmsd(df_concat):
     plotly_fig.update_layout(
         xaxis_title='Time (ns)',
         yaxis_title='RMSD (Å)',
-        title='PL-RMSD over Time (ns)',)
+        title='Protein RMSD over Time',)
 
     # Show the interactive plot using Streamlit
     st.plotly_chart(plotly_fig)
@@ -205,20 +254,20 @@ def create_lig_rmsd_df(data_dir, frame_divider):
         # Remove the last column
         df = df.iloc[:, :-1]
         df['Time (ns)'] = df['frame'] // frame_divider
-        df['File'] = base_file_name[:-4]
+        df['Structure/s'] = base_file_name[:-4]
         df_concat = pd.concat([df_concat, df])
 
     return df_concat
 
 # Define function for Ligand RMSD
-def plot_ligand_rmsd(df_concat): 
+def plot_ligand_rmsd(df_concat, color): 
     # Set the plot style and color palette
     sns.set_style('ticks')
-    my_palette = sns.color_palette()
+    #my_palette = sns.color_palette()
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Time (ns)', y='Lig_wrt_Protein', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Time (ns)', y='Lig_wrt_Protein', hue='Structure/s', data=df_concat, linewidth=2.5, palette=color, ax=ax)
     
     # Add labels and title
     plt.xlabel('Time (ns)', fontsize=12)
@@ -261,24 +310,24 @@ def create_rmsf_df(data_dir):
         # Remove the last column
         df = df.iloc[:, :-1]
         # Add File column in df
-        df['File'] = base_file_name[:-4]
+        df['Structure/s'] = base_file_name[:-4]
         df_concat = pd.concat([df_concat, df])
     return df_concat
 
 ## Define function for Protein RMSF 
-def plot_protein_rmsf(df_concat):
+def plot_protein_rmsf(df_concat, color):
     # Set the plot style and color palette
     sns.set_style('ticks')
-    my_palette = sns.color_palette()
+    #my_palette = sns.color_palette()
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Residue', y='CA', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Residue', y='CA', hue='Structure/s', data=df_concat, linewidth=2.5, palette=color, ax=ax)
     
     # Add labels and title
     plt.xlabel('Residue', fontsize=12)
-    plt.ylabel('RMSF', fontsize=12)
-    plt.title('RMSF Per Residue', fontsize=16, fontweight='bold', pad=10)
+    plt.ylabel('RMSF (Å)', fontsize=12)
+    plt.title('RMSF Per Residue ', fontsize=16, fontweight='bold', pad=10)
     #plt.legend(loc='best')
     # Adjust the plot limits
     plt.xlim(0, max(df_concat['Residue']) + 10)
@@ -316,23 +365,23 @@ def create_prop_df (data_dir, frame_divider):
         # Remove the last column
         df = df.iloc[:, :-1]
         df['Time (ns)'] = df['#'] // frame_divider
-        df['File'] = base_file_name[:-4]
+        df['Structure/s'] = base_file_name[:-4]
         df_concat = pd.concat([df_concat, df])
     return df_concat
 
 ### Define function for rGyr
-def plot_rGyr(df_concat):
+def plot_rGyr(df_concat, color):
     # Set the plot style and color palette
     sns.set_style('ticks')
     my_palette = sns.color_palette()
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Time (ns)', y='rGyr', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Time (ns)', y='rGyr', hue='Structure/s', data=df_concat, linewidth=2.5, palette=color, ax=ax)
     
     # Add labels and title
     plt.xlabel('Time (ns)', fontsize=12)
-    plt.ylabel('rGyr', fontsize=12)
+    plt.ylabel('rGyr (Å)', fontsize=12)
     plt.title('Radius of Gyration over Time', fontsize=16, fontweight='bold', pad=10)
     #plt.legend(loc='best')
     
@@ -354,18 +403,18 @@ def plot_rGyr(df_concat):
     st.pyplot(fig)
 
 ### Define function for SASA
-def plot_sasa(df_concat):
+def plot_sasa(df_concat, color):
     # Set the plot style and color palette
     sns.set_style('ticks')
-    my_palette = sns.color_palette()
+    #my_palette = sns.color_palette()
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Time (ns)', y='SASA', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Time (ns)', y='SASA', hue='Structure/s', data=df_concat, linewidth=2.5, palette=color, ax=ax)
     
     # Add labels and title
     plt.xlabel('Time (ns)', fontsize=12)
-    plt.ylabel('SASA', fontsize=12)
+    plt.ylabel('SASA (Å²)', fontsize=12)
     plt.title('Solvent Available Surface Area of Ligand over Time', fontsize=16, fontweight='bold', pad=10)
     #plt.legend(loc='best')
     
@@ -387,18 +436,18 @@ def plot_sasa(df_concat):
     st.pyplot(fig)
 
 ### Define function for SASA
-def plot_psa(df_concat):
+def plot_psa(df_concat, color):
     # Set the plot style and color palette
     sns.set_style('ticks')
-    my_palette = sns.color_palette()
+    #my_palette = sns.color_palette()
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 8), dpi=500)
-    sns.lineplot(x='Time (ns)', y='PSA', hue='File', data=df_concat, linewidth=2.5, palette=my_palette, ax=ax)
+    sns.lineplot(x='Time (ns)', y='PSA', hue='Structure/s', data=df_concat, linewidth=2.5, palette=color, ax=ax)
     
     # Add labels and title
     plt.xlabel('Time (ns)', fontsize=12)
-    plt.ylabel('PSA', fontsize=12)
+    plt.ylabel('PSA (Å²)', fontsize=12)
     plt.title('Polar Surface Area of Ligand over Time', fontsize=16, fontweight='bold', pad=10)
     #plt.legend(loc='best')
     
@@ -424,49 +473,40 @@ def plot_psa(df_concat):
 if st.button('Plot Graph'):
     # Call Protein RMSD function
     if 'PL-RMSD' in rmsd_options:
-        st.write(""" ## Protein-Ligand RMSD 
-                """)
+        st.markdown('## Protein-Ligand RMSD')
         df_concat = create_pl_rmsd_df(data_dir, frame_division_number)
         st.write(f"Max value in Prot_CA: {max(df_concat['Prot_CA'])}")
-        plot_pl_rmsd(df_concat)
-        st.success("PL-RMSD graph has been plotted successfully!")
+        plot_pl_rmsd(df_concat, color=custom_palette)
+        st.success("Protein RMSD graph has been plotted successfully!")
     
     if 'Ligand-RMSD' in rmsd_options:
-        st.write("""
-                ## Ligand RMSD""")
+        st.markdown('## Ligand RMSD')
         df_concat = create_lig_rmsd_df(data_dir, frame_division_number)
         st.write(f"Max value in Prot_CA: {max(df_concat['Lig_wrt_Protein'])}")        
-        plot_ligand_rmsd(df_concat)
-        st.success("PL-RMSD graph has been plotted successfully!")
+        plot_ligand_rmsd(df_concat, color=custom_palette)
+        st.success("Ligand RMSD graph has been plotted successfully!")
     
     if 'RMSF' in plot_type:
-        st.write("""
-                ## Protein RMSF """)
+        st.markdown('## Protein RMSF')
         df_concat = create_rmsf_df(data_dir)
         #st.write(f"Total number of Residues: ")
-        plot_protein_rmsf(df_concat)
+        plot_protein_rmsf(df_concat, color=custom_palette)
         st.success("Protein RMSF graph has been plotted successfully!")
     
     if 'rGyr' in lig_prop_options:
-        st.write(""" 
-                ## Ligand Properties
-                #### Radius of Gyration""")
+        st.markdown('## Ligand Properties, #### Radius of Gyration')
         df_concat = create_prop_df (data_dir, frame_division_number)
-        plot_rGyr(df_concat)
+        plot_rGyr(df_concat, color=custom_palette)
         st.success('Ligand rGyr graph has been plotted successfully!' )
     
     if 'SASA' in lig_prop_options:
-        st.write(""" 
-                ## Ligand Properties
-                #### Solvent Available Surface Area of Ligand over Time (SASA)""")
+        st.markdown('## Ligand Properties, #### Solvent Available Surface Area of Ligand over Time (SASA)')
         df_concat = create_prop_df (data_dir, frame_division_number)
-        plot_sasa(df_concat)
+        plot_sasa(df_concat, color=custom_palette)
         st.success('Ligand SASA graph has been plotted successfully!')
     
     if 'PSA' in lig_prop_options:
-        st.write(""" 
-                ## Ligand Properties
-                ### Polar Surface Area of Ligand over Time (PSA)""")
+        st.markdown('## Ligand Properties, #### Polar Surface Area of Ligand over Time (PSA)')
         df_concat = create_prop_df(data_dir, frame_division_number)
-        plot_psa(df_concat)
+        plot_psa(df_concat, color=custom_palette)
         st.success('Ligand PSA graph has been plotted successfully!')
