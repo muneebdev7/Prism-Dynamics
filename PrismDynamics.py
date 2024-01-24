@@ -3,6 +3,7 @@ import os
 import io
 import glob
 import base64
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import plotly.figure_factory as ff
@@ -60,11 +61,12 @@ if not os.path.exists(output_path):
 # Side Bar Options
 with st.sidebar:
     st.markdown("# Control Panel")
-    plot_type = st.radio('Which graphs you want to Plot?', ('RMSD', 'RMSF', 'Ligand Properties'),)
+    plot_type = st.radio('Which graphs you want to Plot?', ('RMSD', 'RMSF', 'P-L Contacts', 'Ligand Properties'),)
     
     rmsd_options = [] #st.checkbox('Select all', value=False)
     lig_prop_options = []
-    
+    p_l_contacts_options = []
+
     if plot_type == 'RMSD': 
         options = ['PL-RMSD', 'Ligand-RMSD']
         if rmsd_options:
@@ -75,6 +77,15 @@ with st.sidebar:
         if not rmsd_options:
             st.warning("No option selected. Please select at least one option!")
     
+    elif plot_type == 'P-L Contacts':
+        options = ['H-Bond Interactions',]
+        if p_l_contacts_options:
+            p_l_contacts_options = options
+        else:
+            p_l_contacts_options = st.multiselect('Select options', options, ['H-Bond Interactions',])
+        if not p_l_contacts_options:
+            st.warning("No option selected. Please select at least one option!")
+    
     elif plot_type == 'Ligand Properties':
         options = ['rGyr', 'SASA', 'PSA']
         if lig_prop_options:
@@ -83,6 +94,7 @@ with st.sidebar:
             lig_prop_options = st.multiselect('Select options', options, ['rGyr', 'SASA', 'PSA'])
         if not lig_prop_options:
             st.warning("No option selected. Please select at least one option!")
+
 # Show sliders if:
 #if any(item in rmsd_options for item in ['PL-RMSD', 'Ligand-RMSD']) or any(item in lig_prop_options for item in ['rGyr', 'SASA', 'PSA']):
 if any (rmsd_options) or any (lig_prop_options):   
@@ -431,10 +443,11 @@ def create_prop_df(data_dir, frame_divider):
     df_concat = pd.DataFrame()
     max_min_df = pd.DataFrame(columns=['Structure/s', 
                                     'Highest rGyr (Å)', 'Time (rGyr) Highest', 'Lowest rGyr (Å)',  'Time (rGyr) Lowest',
-                                    'Highest SASA (Å²)', 'Time (SASA) Highest','Lowst SASA (Å²)', 'Time (SASA) Lowest', 
+                                    'Highest SASA (Å²)', 'Time (SASA) Highest','Lowest SASA (Å²)', 'Time (SASA) Lowest', 
                                     'Highest PSA (Å²)', 'Time (PSA) Highest', 'Lowest PSA (Å²)',  'Time (PSA) Lowest'
                                     ])
-    for file_name in glob.glob(os.path.join(data_dir, '*.dat')):
+    for file_name in stqdm(glob.glob(os.path.join(data_dir, '*.dat')), st_container=st.sidebar):
+        sleep(0.5)
         # Get the base name of the file
         base_file_name = os.path.basename(file_name)
         # Read the files into a DataFrame
@@ -474,7 +487,7 @@ def create_prop_df(data_dir, frame_divider):
                                         'Time (SASA) Highest': max_time_SASA,
                                         'Time (SASA) Lowest': min_time_SASA,
                                         'Highest SASA (Å²)': max_SASA,
-                                        'Lowst SASA (Å²)': min_SASA,
+                                        'Lowest SASA (Å²)': min_SASA,
                                         'Time (PSA) Highest': max_time_PSA,
                                         'Time (PSA) Lowest': min_time_PSA,
                                         'Highest PSA (Å²)': max_PSA,
@@ -579,7 +592,130 @@ def plot_psa(df_concat, color):
     plt.savefig(os.path.join(subdir, 'Ligand_PSA_graph.png'))
     
     # Show the plot
-    st.pyplot(fig)    
+    st.pyplot(fig)
+
+#### Define function for HBond Pie chart
+def plot_Hbond(occurrence_with_names, structure_name):
+	
+    palette = ["#003F5C",  # Midnight Green
+				"#58508D", # Purple Navy
+				"#BC5090", # Mulberry
+				"#FEAE65", # Rajah
+				"#a94d64", # China Rose
+				"#AADEA7", # Light Moss Green
+				"#64C2A6", # Green Sheen
+				"#2D87BB", # Cyan Cornflower Blue
+				"#8464a0", 
+				"#7a3137",
+                #"#FF6361", # Pastel Red
+                ]
+    sns.set_palette(palette)
+    
+    fig, ax = plt.subplots(figsize=(12, 10), dpi= 1000, subplot_kw=dict(aspect="equal"))
+    
+    # Set plot title 
+    plt.title(f"H-Bond Interactions of Top Residues in {structure_name}", 
+            zorder=3,
+            fontsize=18, 
+            fontweight='bold', 
+            loc='center', pad=10)
+    
+    # Extract data and labels from occurrence series
+    data = occurrence_with_names.values
+    labels = occurrence_with_names.index
+    
+    # Parameters of pie plot
+    wedges, texts = ax.pie(data, wedgeprops=dict(width=0.65), startangle=180)
+    
+    # Parameters of label boxes
+    bbox_props = dict(boxstyle="square,pad=0.5", fc="w", ec="k", lw=2)
+    kw = dict(bbox=bbox_props, zorder=0, va="center")
+    
+    # Layout & connection style parameters of label boxes with their respective wedges 
+    for i, p in enumerate(wedges):
+        ang = (p.theta2 - p.theta1) / 2. + p.theta1
+        y = np.sin(np.deg2rad(ang))
+        x = np.cos(np.deg2rad(ang))
+        
+        horizontal_alignment = {-1: "right", 1: "left"}[int(np.sign(x))]
+        connection_style = f"angle,angleA=0,angleB={ang},rad=0.5"
+        arrow_style = "->,head_length=0.2,head_width=0.1"
+		
+        # Annotation of label boxes of wedges
+        ax.annotate(f"{labels[i]}: {data[i]:.2f}%", 
+                    fontsize=10, 
+                    weight='bold', 
+                    xy=(x, y), 
+                    xytext=(1.2 * np.sign(x), 1.2 * y),
+                    horizontalalignment=horizontal_alignment,
+                    arrowprops=dict(arrowstyle=arrow_style,
+                                    connectionstyle=connection_style,
+                                    color='black', shrinkA=5), **kw)
+        
+    # Plot legends
+    ax.legend(wedges, labels,
+            title="Residue #",
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.1),
+            #mode='expand',
+            ncol=len(labels),
+            shadow=True)
+    
+    # Save the graph
+    subdir = os.path.join(os.getcwd(), project_title, 'HBond Interactions')
+    if not os.path.exists(subdir):
+        os.makedirs(subdir)
+    plt.savefig(os.path.join(subdir, f'{structure_name}_Hbond_graph.png'))
+    
+    # Show the plot
+    st.markdown(f'### P-L HBond Interactions in {structure_name}')
+    st.pyplot(fig) 
+
+#### Read files for P-L HBond Interactions
+def create_Hbond_df(data_dir):
+    for file_name in stqdm(glob.glob(os.path.join(data_dir, '*.dat')), st_container=st.sidebar):
+        sleep(0.5)
+        # Get the base name of the file
+        base_file_name = os.path.basename(file_name)
+        # Read the files into a DataFrame
+        df = pd.read_csv(file_name, sep='\s+')
+        # Create a new list for the updated column names
+        new_columns = df.columns[1:].tolist() + ['']
+        # Update the DataFrame's column names
+        df.columns = new_columns
+        # Remove '#' from the first column name
+        df.columns = [col.replace('#', '') for col in df.columns]
+        # Remove the last column
+        df = df.iloc[:, :-1]
+        # Add File column in df
+        df['Structure/s'] = base_file_name[:-4]
+        
+        
+        # Calculate the percentage occurrence for the top 10 residues
+        top_ten_residues = df['Residue'].value_counts().nlargest(10).index
+        df_top_residues = df[df['Residue'].isin(top_ten_residues)]
+        percentage_occurrence = (df_top_residues['Residue'].value_counts() / len(df_top_residues)) * 100
+        
+        # Mapping the residue positions & residue names from dataframe
+        residue_names_mapping = dict(zip(df['Residue'], df['ResName']))
+        
+        # Filter residues with more than 1% occurrence
+        filtered_indices = percentage_occurrence[percentage_occurrence > 1].index.intersection(residue_names_mapping.keys())
+        residue_names = [residue_names_mapping[idx] for idx in filtered_indices]
+        
+        # Create the Percentage_Occurrence series with common indices
+        percentage_occurrence_with_names = pd.Series(percentage_occurrence[filtered_indices].values, index=filtered_indices, name='Percentage_Occurrence')
+        
+        # Append position and corresponding residue name to percentage_occurrence_with_names
+        percentage_occurrence_with_names.index = [f"{pos}-{residue_names[i]}" for i, pos in enumerate(filtered_indices)]
+        
+        # Convert Series to Dataframe
+        Hbond_occurrence = pd.Series(percentage_occurrence_with_names)
+        Hbond_df = Hbond_occurrence.to_frame()
+        
+        # Call the pie plot function
+        plot_Hbond(percentage_occurrence_with_names, base_file_name[:-4])
+        st.dataframe(data=Hbond_df)
 
 
 # Hit the 'Plot Graph' button, call the functions
@@ -591,7 +727,7 @@ if st.button('Plot Graph'):
         
         plot_pl_rmsd(df_concat, color=custom_palette)
         st.success("Protein RMSD graph has been plotted successfully!")
-        st.markdown("### Protein RMSD Dataframe")
+        st.markdown("### Highly Fluctuating Points in Protein RMSD")
         st.dataframe(data=Prmsd_df)
     
     if 'Ligand-RMSD' in rmsd_options:
@@ -600,7 +736,7 @@ if st.button('Plot Graph'):
         
         plot_ligand_rmsd(df_concat, color=custom_palette)
         st.success("Ligand RMSD graph has been plotted successfully!")
-        st.markdown("### Ligand RMSD Dataframe")
+        st.markdown("### Highly Fluctuating Points in Ligand RMSD")
         st.dataframe(data=Lrmsd_df)
     
     if 'RMSF' in plot_type:
@@ -609,8 +745,12 @@ if st.button('Plot Graph'):
         
         plot_protein_rmsf(df_concat, color=custom_palette)
         st.success("Protein RMSF graph has been plotted successfully!")
-        st.markdown("### Protein RMSF Dataframe")
+        st.markdown("### Highly Fluctuating Residues in Protein RMSF")
         st.dataframe(data=rmsf_df)
+    
+    if 'P-L Contacts' in plot_type:
+        #st.markdown('## P-L H-Bond Interactions')
+        create_Hbond_df(data_dir)
     
     if 'rGyr' in lig_prop_options:
         st.markdown('## Ligand Properties')
@@ -619,7 +759,7 @@ if st.button('Plot Graph'):
         
         plot_rGyr(df_concat, color=custom_palette)
         st.success('Ligand rGyr graph has been plotted successfully!' )
-        st.markdown("#### rGyr Dataframe")
+        st.markdown("#### Highly Fluctuating Points in rGyr")
         st.dataframe(rgyr_df[['Structure/s', 'Highest rGyr (Å)', 'Time (rGyr) Highest',
                             'Lowest rGyr (Å)',  'Time (rGyr) Lowest'
                             ]])
@@ -631,9 +771,9 @@ if st.button('Plot Graph'):
         
         plot_sasa(df_concat, color=custom_palette)
         st.success('Ligand SASA graph has been plotted successfully!')
-        st.markdown("#### SASA Dataframe")
+        st.markdown("#### Highly Fluctuating Points in SASA")
         st.dataframe(sasa_df[['Structure/s', 'Highest SASA (Å²)', 'Time (SASA) Highest',
-                            'Lowst SASA (Å²)', 'Time (SASA) Lowest'
+                            'Lowest SASA (Å²)', 'Time (SASA) Lowest'
                             ]])
     
     if 'PSA' in lig_prop_options:
@@ -643,6 +783,6 @@ if st.button('Plot Graph'):
         
         plot_psa(df_concat, color=custom_palette)
         st.success('Ligand PSA graph has been plotted successfully!')
-        st.markdown("#### PSA Dataframe")
+        st.markdown("#### Highly Fluctuating Points in PSA")
         st.dataframe(psa_df[['Structure/s', 'Highest PSA (Å²)', 'Time (PSA) Highest',
                             'Lowest PSA (Å²)',  'Time (PSA) Lowest']])
