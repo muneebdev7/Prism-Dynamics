@@ -27,5 +27,6 @@ Following packages would be required to be installed using pip before using Grpa
 ```
 pip install streamlit
 pip install stqdm
+pip install seaborn
 pip install plotly
 ```
